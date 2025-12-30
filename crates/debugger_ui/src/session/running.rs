@@ -799,10 +799,16 @@ impl RunningState {
             cx.subscribe_in(&session, window, |this, _, event, window, cx| {
                 match event {
                     SessionEvent::Stopped(thread_id) => {
+                        let should_autofocus =
+                            dap::debugger_settings::DebuggerSettings::get_global(cx)
+                                .autofocus_on_breakpoint_hit;
+
                         let panel = this
                             .workspace
                             .update(cx, |workspace, cx| {
-                                workspace.open_panel::<crate::DebugPanel>(window, cx);
+                                if should_autofocus {
+                                    workspace.open_panel::<crate::DebugPanel>(window, cx);
+                                }
                                 workspace.panel::<crate::DebugPanel>(cx)
                             })
                             .log_err()
