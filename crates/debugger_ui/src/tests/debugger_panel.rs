@@ -5,9 +5,11 @@ use crate::{
 };
 use dap::{
     ErrorResponse, Message, RunInTerminalRequestArguments, SourceBreakpoint,
-    StartDebuggingRequestArguments, StartDebuggingRequestArgumentsRequest,
+    StartDebuggingRequestArguments, StartDebuggingRequestArgumentsRequest, StoppedEvent,
+    StoppedEventReason,
     adapters::DebugTaskDefinition,
     client::SessionId,
+    messages,
     requests::{
         Continue, Disconnect, Launch, Next, RunInTerminal, SetBreakpoints, StackTrace,
         StartDebugging, StepBack, StepIn, StepOut, Threads,
@@ -23,6 +25,7 @@ use project::{
     debugger::session::{ThreadId, ThreadStatus},
 };
 use serde_json::json;
+use settings::SettingsStore;
 use std::{
     path::Path,
     sync::{
@@ -1949,4 +1952,151 @@ async fn test_adapter_shutdown_with_child_sessions_on_app_quit(
         child_disconnect_called.load(Ordering::SeqCst),
         "Child session should have received disconnect request"
     );
+}
+
+#[gpui::test]
+async fn test_autofocus_setting_disabled(executor: BackgroundExecutor, cx: &mut TestAppContext) {
+    init_test(cx);
+
+    // Set global setting to disable autofocus
+    cx.update(|cx| {
+        let mut store = SettingsStore::test(cx);
+        let json = r#"{ "debugger": { "autofocus_on_breakpoint_hit": false } }"#;
+        store.set_global_settings(json, cx).unwrap();
+        cx.set_global(store);
+    });
+
+    let fs = FakeFs::new(executor.clone());
+    fs.insert_tree(path!("/project"), json!({ "main.rs": "fn main() {}" }))
+        .await;
+
+    let project = Project::test(fs, [path!("/project").as_ref()], cx).await;
+    let workspace = init_test_workspace(&project, cx).await;
+    let cx = &mut VisualTestContext::from_window(*workspace, cx);
+
+    let session = start_debug_session(&workspace, cx, |_| {}).unwrap();
+    let client = session.update(cx, |session, _| session.adapter_client().unwrap());
+
+    // Close dock manually in order to test if it ISN'T reopened
+    workspace
+        .update(cx, |workspace, window, cx| {
+            workspace.close_panel::<crate::DebugPanel>(window, cx);
+        })
+        .unwrap();
+
+    client.on_request::<Threads, _>(move |_, _| {
+        Ok(dap::ThreadsResponse {
+            threads: vec![dap::Thread {
+                id: 1,
+                name: "Thread 1".into(),
+            }],
+        })
+    });
+
+    client.on_request::<StackTrace, _>(move |_, _| {
+        Ok(dap::StackTraceResponse {
+            stack_frames: Vec::default(),
+            total_frames: None,
+        })
+    });
+
+    cx.run_until_parked();
+
+    // Ensure bottom dock is not open before stopped
+    workspace
+        .update(cx, |workspace, _window, cx| {
+            assert!(!workspace.bottom_dock().read(cx).is_open());
+        })
+        .unwrap();
+
+    client
+        .fake_event(messages::Events::Stopped(StoppedEvent {
+            reason: StoppedEventReason::Pause,
+            description: None,
+            thread_id: Some(1),
+            preserve_focus_hint: None,
+            text: None,
+            all_threads_stopped: None,
+            hit_breakpoint_ids: None,
+        }))
+        .await;
+
+    cx.run_until_parked();
+
+    // Dock should remain closed since autofocus was disabled
+    workspace
+        .update(cx, |workspace, _window, cx| {
+            assert!(!workspace.bottom_dock().read(cx).is_open());
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+async fn test_autofocus_setting_enabled(executor: BackgroundExecutor, cx: &mut TestAppContext) {
+    init_test(cx);
+
+    // Ensure global setting for autofocus is enabled (even though it's the default)
+    cx.update(|cx| {
+        let mut store = SettingsStore::test(cx);
+        let json = r#"{ "debugger": { "autofocus_on_breakpoint_hit": true } }"#;
+        store.set_global_settings(json, cx).unwrap();
+        cx.set_global(store);
+    });
+
+    let fs = FakeFs::new(executor.clone());
+    fs.insert_tree(path!("/project"), json!({ "main.rs": "fn main() {}" }))
+        .await;
+
+    let project = Project::test(fs, [path!("/project").as_ref()], cx).await;
+    let workspace = init_test_workspace(&project, cx).await;
+    let cx = &mut VisualTestContext::from_window(*workspace, cx);
+
+    let session = start_debug_session(&workspace, cx, |_| {}).unwrap();
+    let client = session.update(cx, |session, _| session.adapter_client().unwrap());
+
+    // Close dock manually in order to test if it IS reopened
+    workspace
+        .update(cx, |workspace, window, cx| {
+            workspace.close_panel::<crate::DebugPanel>(window, cx);
+        })
+        .unwrap();
+
+    client.on_request::<Threads, _>(move |_, _| {
+        Ok(dap::ThreadsResponse {
+            threads: vec![dap::Thread {
+                id: 1,
+                name: "Thread 1".into(),
+            }],
+        })
+    });
+
+    client.on_request::<StackTrace, _>(move |_, _| {
+        Ok(dap::StackTraceResponse {
+            stack_frames: Vec::default(),
+            total_frames: None,
+        })
+    });
+
+    cx.run_until_parked();
+
+    client
+        .fake_event(messages::Events::Stopped(StoppedEvent {
+            reason: StoppedEventReason::Pause,
+            description: None,
+            thread_id: Some(1),
+            preserve_focus_hint: None,
+            text: None,
+            all_threads_stopped: None,
+            hit_breakpoint_ids: None,
+        }))
+        .await;
+
+    cx.run_until_parked();
+
+    // Dock should have been reopened due to autofocus setting
+    workspace
+        .update(cx, |workspace, _window, cx| {
+            assert!(workspace.bottom_dock().read(cx).is_open());
+        })
+        .unwrap();
 }
