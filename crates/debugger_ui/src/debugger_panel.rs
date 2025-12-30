@@ -359,9 +359,17 @@ impl DebugPanel {
 
             this.workspace.clone()
         })?;
-        workspace.update_in(cx, |workspace, window, cx| {
-            workspace.focus_panel::<Self>(window, cx);
+
+        let should_open_panel = cx.update(|_, cx| {
+            dap::debugger_settings::DebuggerSettings::get_global(cx).autofocus_on_breakpoint_hit
         })?;
+
+        if should_open_panel {
+            workspace.update_in(cx, |workspace, window, cx| {
+                workspace.focus_panel::<Self>(window, cx);
+            })?;
+        }
+
         Ok(debug_session)
     }
 
