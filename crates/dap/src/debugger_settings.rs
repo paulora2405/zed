@@ -31,6 +31,10 @@ pub struct DebuggerSettings {
     ///
     /// Default: Bottom
     pub dock: settings::DockPosition,
+    /// Whether to automatically open and focus the debug panel when a breakpoint is hit.
+    ///
+    /// Default: true
+    pub autofocus_on_breakpoint_hit: bool,
 }
 
 impl Settings for DebuggerSettings {
@@ -46,6 +50,7 @@ impl Settings for DebuggerSettings {
             log_dap_communications: content.log_dap_communications.unwrap(),
             format_dap_log_messages: content.format_dap_log_messages.unwrap(),
             dock: content.dock.unwrap(),
+            autofocus_on_breakpoint_hit: content.autofocus_on_breakpoint_hit.unwrap(),
         }
     }
 }
