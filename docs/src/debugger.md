@@ -169,6 +169,7 @@ The settings for the debugger are grouped under the `debugger` key in `settings.
 - `timeout`: Time in milliseconds until timeout error when connecting to a TCP debug adapter.
 - `log_dap_communications`: Whether to log messages between active debug adapters and Zed.
 - `format_dap_log_messages`: Whether to format DAP messages when adding them to the debug adapter logger.
+- `autofocus_on_breakpoint_hit`: Whether the debug panel should automatically open and gain focus when a breakpoint or stop event is received.
 
 ### Dock
 
@@ -299,6 +300,24 @@ The settings for the debugger are grouped under the `debugger` key in `settings.
 ```
 
 Inline value hints can also be toggled from the Editor Controls menu in the editor toolbar.
+
+### Autofocus On Breakpoint Hit
+
+- Description: Whether the debug panel should automatically open and gain focus when a breakpoint or stop event is received. When set to `false`, Zed will still update the debug session state (threads, stack frames, variables) but will not force the panel to open or steal keyboard focus from the editor.
+- Default: `true`
+- Setting: `debugger.autofocus_on_breakpoint_hit`
+
+**Options**
+
+`boolean` values
+
+```json [settings]
+{
+  "debugger": {
+    "autofocus_on_breakpoint_hit": false
+  }
+}
+```
 
 ### Log Dap Communications
 
