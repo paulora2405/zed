@@ -169,7 +169,7 @@ The settings for the debugger are grouped under the `debugger` key in `settings.
 - `timeout`: Time in milliseconds until timeout error when connecting to a TCP debug adapter.
 - `log_dap_communications`: Whether to log messages between active debug adapters and Zed.
 - `format_dap_log_messages`: Whether to format DAP messages when adding them to the debug adapter logger.
-- `autofocus_on_breakpoint_hit`: Whether the debug panel should automatically open and gain focus when a breakpoint or stop event is received.
+- `panel_autofocus`: Whether the debug panel should automatically open and gain focus when debugging starts, when a breakpoint is hit, or when any stop event occurs.
 
 ### Dock
 
@@ -301,11 +301,11 @@ The settings for the debugger are grouped under the `debugger` key in `settings.
 
 Inline value hints can also be toggled from the Editor Controls menu in the editor toolbar.
 
-### Autofocus On Breakpoint Hit
+### Panel Autofocus
 
-- Description: Whether the debug panel should automatically open and gain focus when a breakpoint or stop event is received. When set to `false`, Zed will still update the debug session state (threads, stack frames, variables) but will not force the panel to open or steal keyboard focus from the editor.
+- Description: Whether the debug panel should automatically open and gain focus when debugging starts, when a breakpoint is hit, or when any stop event occurs (such as pause, step completion, exception, or hot-reload). When set to `false`, Zed will still update the debug session state (threads, stack frames, variables) but will not force the panel to open or steal keyboard focus from the editor. This is particularly useful for hot-reload workflows where you want to keep your editor focused.
 - Default: `true`
-- Setting: `debugger.autofocus_on_breakpoint_hit`
+- Setting: `debugger.panel_autofocus`
 
 **Options**
 
@@ -314,7 +314,7 @@ Inline value hints can also be toggled from the Editor Controls menu in the edit
 ```json [settings]
 {
   "debugger": {
-    "autofocus_on_breakpoint_hit": false
+    "panel_autofocus": false
   }
 }
 ```
