@@ -1955,13 +1955,16 @@ async fn test_adapter_shutdown_with_child_sessions_on_app_quit(
 }
 
 #[gpui::test]
-async fn test_autofocus_setting_disabled(executor: BackgroundExecutor, cx: &mut TestAppContext) {
+async fn test_panel_autofocus_disabled_on_session_start(
+    executor: BackgroundExecutor,
+    cx: &mut TestAppContext,
+) {
     init_test(cx);
 
-    // Set global setting to disable autofocus
+    // Set global setting to disable panel autofocus
     cx.update(|cx| {
         let mut store = SettingsStore::test(cx);
-        let json = r#"{ "debugger": { "autofocus_on_breakpoint_hit": false } }"#;
+        let json = r#"{ "debugger": { "panel_autofocus": false } }"#;
         store.set_global_settings(json, cx).unwrap();
         cx.set_global(store);
     });
@@ -1974,71 +1977,97 @@ async fn test_autofocus_setting_disabled(executor: BackgroundExecutor, cx: &mut 
     let workspace = init_test_workspace(&project, cx).await;
     let cx = &mut VisualTestContext::from_window(*workspace, cx);
 
-    let session = start_debug_session(&workspace, cx, |_| {}).unwrap();
-    let client = session.update(cx, |session, _| session.adapter_client().unwrap());
-
-    // Close dock manually in order to test if it ISN'T reopened
+    // Close the debug panel before starting session
     workspace
         .update(cx, |workspace, window, cx| {
             workspace.close_panel::<crate::DebugPanel>(window, cx);
         })
         .unwrap();
 
-    client.on_request::<Threads, _>(move |_, _| {
-        Ok(dap::ThreadsResponse {
-            threads: vec![dap::Thread {
-                id: 1,
-                name: "Thread 1".into(),
-            }],
-        })
-    });
-
-    client.on_request::<StackTrace, _>(move |_, _| {
-        Ok(dap::StackTraceResponse {
-            stack_frames: Vec::default(),
-            total_frames: None,
-        })
-    });
-
     cx.run_until_parked();
 
-    // Ensure bottom dock is not open before stopped
+    // Verify panel is closed before session starts
     workspace
         .update(cx, |workspace, _window, cx| {
             assert!(!workspace.bottom_dock().read(cx).is_open());
         })
         .unwrap();
 
-    client
-        .fake_event(messages::Events::Stopped(StoppedEvent {
-            reason: StoppedEventReason::Pause,
-            description: None,
-            thread_id: Some(1),
-            preserve_focus_hint: None,
-            text: None,
-            all_threads_stopped: None,
-            hit_breakpoint_ids: None,
-        }))
-        .await;
+    // Start a debug session - this should NOT open the panel
+    let _session = start_debug_session(&workspace, cx, |_| {}).unwrap();
 
     cx.run_until_parked();
 
-    // Dock should remain closed since autofocus was disabled
+    // Panel should remain closed even after session starts
     workspace
         .update(cx, |workspace, _window, cx| {
-            assert!(!workspace.bottom_dock().read(cx).is_open());
+            assert!(
+                !workspace.bottom_dock().read(cx).is_open(),
+                "Panel should remain closed when panel_autofocus is disabled"
+            );
         })
         .unwrap();
 }
 
 #[gpui::test]
-async fn test_autofocus_setting_enabled(executor: BackgroundExecutor, cx: &mut TestAppContext) {
+async fn test_panel_autofocus_enabled_on_session_start(
+    executor: BackgroundExecutor,
+    cx: &mut TestAppContext,
+) {
     init_test(cx);
 
-    // Ensure global setting for autofocus is enabled (even though it's the default)
+    // Ensure global setting for panel autofocus is enabled (default)
     cx.update(|cx| {
         let mut store = SettingsStore::test(cx);
-        let json = r#"{ "debugger": { "autofocus_on_breakpoint_hit": true } }"#;
+        let json = r#"{ "debugger": { "panel_autofocus": true } }"#;
+        store.set_global_settings(json, cx).unwrap();
+        cx.set_global(store);
+    });
+
+    let fs = FakeFs::new(executor.clone());
+    fs.insert_tree(path!("/project"), json!({ "main.rs": "fn main() {}" }))
+        .await;
+
+    let project = Project::test(fs, [path!("/project").as_ref()], cx).await;
+    let workspace = init_test_workspace(&project, cx).await;
+    let cx = &mut VisualTestContext::from_window(*workspace, cx);
+
+    // Close the debug panel before starting session
+    workspace
+        .update(cx, |workspace, window, cx| {
+            workspace.close_panel::<crate::DebugPanel>(window, cx);
+        })
+        .unwrap();
+
+    cx.run_until_parked();
+
+    // Start a debug session - this SHOULD open the panel
+    let _session = start_debug_session(&workspace, cx, |_| {}).unwrap();
+
+    cx.run_until_parked();
+
+    // Panel should have opened when session started
+    workspace
+        .update(cx, |workspace, _window, cx| {
+            assert!(
+                workspace.bottom_dock().read(cx).is_open(),
+                "Panel should open when panel_autofocus is enabled and session starts"
+            );
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+async fn test_panel_autofocus_disabled_on_breakpoint(
+    executor: BackgroundExecutor,
+    cx: &mut TestAppContext,
+) {
+    init_test(cx);
+
+    // Set global setting to disable panel autofocus
+    cx.update(|cx| {
+        let mut store = SettingsStore::test(cx);
+        let json = r#"{ "debugger": { "panel_autofocus": false } }"#;
         store.set_global_settings(json, cx).unwrap();
         cx.set_global(store);
     });
@@ -2054,7 +2083,7 @@ async fn test_autofocus_setting_enabled(executor: BackgroundExecutor, cx: &mut T
     let session = start_debug_session(&workspace, cx, |_| {}).unwrap();
     let client = session.update(cx, |session, _| session.adapter_client().unwrap());
 
-    // Close dock manually in order to test if it IS reopened
+    // Close panel manually to test if it stays closed on breakpoint
     workspace
         .update(cx, |workspace, window, cx| {
             workspace.close_panel::<crate::DebugPanel>(window, cx);
@@ -2079,24 +2108,112 @@ async fn test_autofocus_setting_enabled(executor: BackgroundExecutor, cx: &mut T
 
     cx.run_until_parked();
 
+    // Ensure panel is closed before breakpoint
+    workspace
+        .update(cx, |workspace, _window, cx| {
+            assert!(!workspace.bottom_dock().read(cx).is_open());
+        })
+        .unwrap();
+
+    // Send a breakpoint stop event
     client
         .fake_event(messages::Events::Stopped(StoppedEvent {
-            reason: StoppedEventReason::Pause,
+            reason: StoppedEventReason::Breakpoint,
             description: None,
             thread_id: Some(1),
             preserve_focus_hint: None,
             text: None,
             all_threads_stopped: None,
-            hit_breakpoint_ids: None,
+            hit_breakpoint_ids: Some(vec![1]),
         }))
         .await;
 
     cx.run_until_parked();
 
-    // Dock should have been reopened due to autofocus setting
+    // Panel should remain closed on breakpoint when autofocus is disabled
     workspace
         .update(cx, |workspace, _window, cx| {
-            assert!(workspace.bottom_dock().read(cx).is_open());
+            assert!(
+                !workspace.bottom_dock().read(cx).is_open(),
+                "Panel should remain closed on breakpoint when panel_autofocus is disabled"
+            );
+        })
+        .unwrap();
+}
+
+#[gpui::test]
+async fn test_panel_autofocus_enabled_on_breakpoint(
+    executor: BackgroundExecutor,
+    cx: &mut TestAppContext,
+) {
+    init_test(cx);
+
+    // Ensure global setting for panel autofocus is enabled
+    cx.update(|cx| {
+        let mut store = SettingsStore::test(cx);
+        let json = r#"{ "debugger": { "panel_autofocus": true } }"#;
+        store.set_global_settings(json, cx).unwrap();
+        cx.set_global(store);
+    });
+
+    let fs = FakeFs::new(executor.clone());
+    fs.insert_tree(path!("/project"), json!({ "main.rs": "fn main() {}" }))
+        .await;
+
+    let project = Project::test(fs, [path!("/project").as_ref()], cx).await;
+    let workspace = init_test_workspace(&project, cx).await;
+    let cx = &mut VisualTestContext::from_window(*workspace, cx);
+
+    let session = start_debug_session(&workspace, cx, |_| {}).unwrap();
+    let client = session.update(cx, |session, _| session.adapter_client().unwrap());
+
+    // Close panel manually to test if it reopens on breakpoint
+    workspace
+        .update(cx, |workspace, window, cx| {
+            workspace.close_panel::<crate::DebugPanel>(window, cx);
+        })
+        .unwrap();
+
+    client.on_request::<Threads, _>(move |_, _| {
+        Ok(dap::ThreadsResponse {
+            threads: vec![dap::Thread {
+                id: 1,
+                name: "Thread 1".into(),
+            }],
+        })
+    });
+
+    client.on_request::<StackTrace, _>(move |_, _| {
+        Ok(dap::StackTraceResponse {
+            stack_frames: Vec::default(),
+            total_frames: None,
+        })
+    });
+
+    cx.run_until_parked();
+
+    // Send a breakpoint stop event
+    client
+        .fake_event(messages::Events::Stopped(StoppedEvent {
+            reason: StoppedEventReason::Breakpoint,
+            description: None,
+            thread_id: Some(1),
+            preserve_focus_hint: None,
+            text: None,
+            all_threads_stopped: None,
+            hit_breakpoint_ids: Some(vec![1]),
+        }))
+        .await;
+
+    cx.run_until_parked();
+
+    // Panel should have been reopened on breakpoint
+    workspace
+        .update(cx, |workspace, _window, cx| {
+            assert!(
+                workspace.bottom_dock().read(cx).is_open(),
+                "Panel should open on breakpoint when panel_autofocus is enabled"
+            );
         })
         .unwrap();
 }
