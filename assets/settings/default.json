@@ -2385,7 +2385,7 @@
     "log_dap_communications": true,
     "format_dap_log_messages": true,
     "button": true,
-    "autofocus_on_breakpoint_hit": true
+    "panel_autofocus": true
   },
   // Configures any number of settings profiles that are temporarily applied on
   // top of your existing user settings when selected from

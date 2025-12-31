@@ -416,10 +416,11 @@ pub struct DebuggerSettingsContent {
     ///
     /// Default: Bottom
     pub dock: Option<DockPosition>,
-    /// Whether to automatically open and focus the debug panel when a breakpoint is hit.
+    /// Whether to automatically open and focus the debug panel when debugging starts,
+    /// when a breakpoint is hit, or when any stop event occurs.
     ///
     /// Default: true
-    pub autofocus_on_breakpoint_hit: Option<bool>,
+    pub panel_autofocus: Option<bool>,
 }
 
 /// The granularity of one 'step' in the stepping requests `next`, `stepIn`, `stepOut`, and `stepBack`.
