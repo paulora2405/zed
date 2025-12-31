@@ -808,7 +808,7 @@ impl RunningState {
                     SessionEvent::Stopped(thread_id) => {
                         let should_autofocus =
                             dap::debugger_settings::DebuggerSettings::get_global(cx)
-                                .autofocus_on_breakpoint_hit;
+                                .panel_autofocus;
 
                         let panel = this
                             .workspace
